@@ -2,18 +2,19 @@
 -- 1. ENUM 타입 정의
 --------------------------------------------------
 create type status as enum ('ACTIVE', 'SUSPENDED', 'WITHDRAWN'); -- 회원 상태 (활성, 정지, 탈퇴)
-create type member_role as enum ('ADMIN', 'MEMBER'); -- 회원 권한 (관리자, 일반 회원)
-create type member_type as enum ('YEOBEAK', 'NAVER', 'KAKAO', 'GOOGLE'); -- 가입 경로 타입
-create type rel_status as enum ('PENDING', 'DONE'); -- 친구 관계 상태 (대기 중, 완료)
-create type companion_relation as enum ('PENDING', 'DONE', 'REJECT'); -- 동행 관계 상태 (대기 중, 완료, 거절)
-create type together_purpose as enum ('MEAL', 'SPOT'); -- 모임 목적 (식사, 장소/관광)
-create type together_area as enum ('NEAR', 'OTHER'); -- 모임 지역 구분 (근처, 기타)
-create type together_status as enum ('OPEN', 'CLOSE', 'ENDED'); -- 모임 상태 (모집 중, 모집 마감, 종료)
-create type together_role as enum ('HOST', 'MEMBER'); -- 모임 내 역할 (방장, 일반 참여자)
-create type report_status as enum ('PENDING', 'DONE', 'REJECT'); -- 신고 처리 상태 (대기 중, 처리 완료, 반려)
-create type destination_type as enum ('CITY', 'COUNTRY'); -- 목적지 타입 (도시, 국가)
-create type trip_category as enum ('DOMESTIC', 'OVERSEAS'); -- 여행 카테고리 (국내, 해외)
-create type trip_status as enum ('WRITE', 'SAVE', 'FINISH'); -- 여행 상태 (작성 중, 임시 저장, 완료)
+create type member_role as enum ('admin', 'member'); -- 회원 권한 (관리자, 일반 회원)
+create type oauth_provider as enum ('kakao', 'naver', 'google');
+create type rel_status as enum ('pending', 'done'); -- 친구 관계 상태 (대기 중, 완료)
+create type companion_relation as enum ('pending', 'done', 'reject'); -- 동행 관계 상태 (대기 중, 완료, 거절)
+create type together_purpose as enum ('meal', 'spot'); -- 모임 목적 (식사, 장소/관광)
+create type together_area as enum ('near', 'other'); -- 모임 지역 구분 (근처, 기타)
+create type together_status as enum ('open', 'close', 'ended'); -- 모임 상태 (모집 중, 모집 마감, 종료)
+create type together_role as enum ('host', 'member'); -- 모임 내 역할 (방장, 일반 참여자)
+create type report_status as enum ('pending', 'done', 'reject'); -- 신고 처리 상태 (대기 중, 처리 완료, 반려)
+create type destination_type as enum ('city', 'country'); -- 목적지 타입 (도시, 국가)
+create type trip_category as enum ('domestic', 'overseas'); -- 여행 카테고리 (국내, 해외)
+create type trip_status as enum ('write', 'save', 'finish'); -- 여행 상태 (작성 중, 임시 저장, 완료)
+
 
 
 --------------------------------------------------
@@ -30,6 +31,7 @@ create table tbl_member (
                             member_alias varchar(20),
                             member_bio varchar(255),
                             member_status status default 'ACTIVE',      -- (활동: ACTIVE, 휴면: SUSPENDED, 탈퇴: WITHDRAWN)
+                            member_login_verified boolean default true,
                             created_datetime timestamp default now(),
                             updated_datetime timestamp default now()
 );
@@ -67,16 +69,16 @@ create table tbl_destination (
                                      references tbl_destination(id)
 );
 
--- 여행 취향
+-- 여행 취향 (화면: 프로필 > 여행 취향 · 기초 데이터는 이 파일 맨 아래)
 create table tbl_preference (
                                 id bigint generated always as identity primary key,
-                                preference_name varchar(30) not null
+                                preference_name varchar(30) not null unique
 );
 
--- 선호 활동
+-- 선호 활동 (화면: 프로필 > 여행 키워드 · 기초 데이터는 이 파일 맨 아래)
 create table tbl_vibe (
                           id bigint generated always as identity primary key,
-                          vide_name varchar(30) not null
+                          vibe_name varchar(30) not null unique
 );
 
 
@@ -84,11 +86,23 @@ create table tbl_vibe (
 -- 3. 회원 연관 테이블 (tbl_member 참조)
 --------------------------------------------------
 
+-- Oauth (소셜 로그인 정보)
+create table tbl_oauth (
+                           id bigint generated always as identity primary key,
+                           provider_id varchar(255) unique not null,            -- 공급자 측 고유 사용자 식별자
+                           provider oauth_provider not null,                    -- oauth 공급자 (enum: kakao/google/naver)
+                           profile_url varchar(255),
+                           member_id bigint not null,                           -- fk → tbl_member.id | 연결된 회원
+                           created_datetime timestamp not null default now(),
+                           updated_datetime timestamp default now(),
+                           constraint fk_oauth_member foreign key (member_id)
+                               references tbl_member(id)
+);
+
 -- 회원 권한 및 정보
 create table tbl_auth (
                           id bigint not null primary key,
-                          member_role member_role default 'MEMBER',     -- (ADMIN, MEMBER)
-                          member_type member_type not null,
+                          member_role member_role default 'member',     -- (ADMIN, MEMBER)
                           created_datetime timestamp default now(),
                           updated_datetime timestamp default now(),
                           constraint fk_auth_member foreign key (id)
@@ -98,20 +112,38 @@ create table tbl_auth (
 -- 회원 개인 설정
 create table tbl_member_setting (
                                     id bigint not null primary key,
-                                    preference_id bigint not null,
-                                    vibe_id bigint not null,
-                                    thema_color varchar(30) default '',
-                                    alias_public boolean default 'false',
-                                    phone_public boolean default 'false',
-                                    note_auto_save boolean default 'false',
+                                    thema_color varchar(30) default 'sky',      -- 팔레트 id(sky·aqua·blossom·lavender·mint) 또는 직접 고른 #rrggbb
+                                    alias_public boolean default true,
+                                    phone_public boolean default false,
+                                    note_auto_save boolean default true,
                                     created_datetime timestamp default now(),
                                     updated_datetime timestamp default now(),
                                     constraint fk_setting_member foreign key (id)
-                                        references tbl_member(id) on delete cascade,
-                                    constraint fk_setting_preference foreign key (preference_id)
-                                        references tbl_preference(id),
-                                    constraint fk_setting_vibe foreign key (vibe_id)
-                                        references tbl_vibe(id)
+                                        references tbl_member(id) on delete cascade
+);
+
+-- 회원이 고른 여행 취향 (여러 개)
+create table tbl_member_preference (
+                                       member_id bigint not null,
+                                       preference_id bigint not null,
+                                       created_datetime timestamp default now(),
+                                       primary key (member_id, preference_id),
+                                       constraint fk_member_preference_member foreign key (member_id)
+                                           references tbl_member(id) on delete cascade,
+                                       constraint fk_member_preference_preference foreign key (preference_id)
+                                           references tbl_preference(id)
+);
+
+-- 회원이 고른 여행 키워드 (여러 개)
+create table tbl_member_vibe (
+                                 member_id bigint not null,
+                                 vibe_id bigint not null,
+                                 created_datetime timestamp default now(),
+                                 primary key (member_id, vibe_id),
+                                 constraint fk_member_vibe_member foreign key (member_id)
+                                     references tbl_member(id) on delete cascade,
+                                 constraint fk_member_vibe_vibe foreign key (vibe_id)
+                                     references tbl_vibe(id)
 );
 
 -- 친구 신청 목록
@@ -119,7 +151,7 @@ create table tbl_member_rel (
                                 id bigint generated always as identity primary key,
                                 rel_requester_id bigint not null,
                                 rel_receiver_id bigint not null,
-                                rel_status rel_status not null default 'PENDING',
+                                rel_status rel_status not null default 'pending',
                                 created_datetime timestamp default now(),
                                 constraint fk_rel_requester foreign key (rel_requester_id)
                                     references tbl_member(id),
@@ -138,12 +170,12 @@ create table tbl_get_together (
                                   place_id bigint not null,
                                   together_title varchar(255) not null,
                                   together_content text not null,
-                                  together_purpose together_purpose default 'SPOT',     -- (장소/관광: SPOT, 식사: MEAL)
-                                  together_area together_area default 'NEAR',           -- (근처: NEAR, 기타: OTHER)
+                                  together_purpose together_purpose default 'spot',     -- (장소/관광: SPOT, 식사: MEAL)
+                                  together_area together_area default 'near',           -- (근처: NEAR, 기타: OTHER)
                                   together_max_member int not null,
                                   together_start_date timestamp not null,
                                   together_end_date timestamp not null,
-                                  together_status together_status default 'OPEN',
+                                  together_status together_status default 'open',
                                   created_datetime timestamp default now(),
                                   updated_datetime timestamp default now(),
                                   constraint fk_together_place foreign key (place_id)
@@ -218,7 +250,7 @@ create table tbl_trip (
                           trip_title varchar(255) not null,
                           trip_start_date timestamp not null,
                           trip_end_date timestamp not null,
-                          trip_status trip_status default 'WRITE',
+                          trip_status trip_status default 'write',
                           created_datetime timestamp default now(),
                           updated_datetime timestamp default now(),
                           constraint fk_trip_member foreign key (member_id)
@@ -250,7 +282,7 @@ create table tbl_schedule (
                               schedule_title varchar(255) not null,
                               schedule_start_time timestamp not null,
                               schedule_memo varchar(255),
-                              schedule_ai_source boolean default 'false',
+                              schedule_ai_source boolean default false,
                               created_datetime timestamp default now(),
                               updated_datetime timestamp default now(),
                               constraint fk_schedule_trip_day foreign key (trip_day_id)
@@ -281,10 +313,10 @@ create table tbl_trip_companion (
                                     id bigint generated always as identity primary key,
                                     trip_id bigint not null,
                                     member_id bigint,
-                                    companion_is_member boolean default 'false',
+                                    companion_is_member boolean default false,
                                     companion_name varchar(20),
                                     companion_contact varchar(20),
-                                    companion_relation companion_relation default 'REJECT',
+                                    companion_relation companion_relation default 'reject',
                                     created_datetime timestamp default now(),
                                     constraint fk_companion_trip foreign key (trip_id)
                                         references tbl_trip(id),
@@ -304,7 +336,7 @@ create table tbl_report (
                             target_id bigint not null,
                             report_reason varchar(255) not null,
                             report_content text,
-                            report_status report_status default 'PENDING',
+                            report_status report_status default 'pending',
                             created_datetime timestamp default now(),
                             updated_datetime timestamp default now(),
                             constraint fk_report_reporter foreign key (reporter_id)
@@ -357,3 +389,17 @@ create table tbl_file_note (
                                constraint fk_file_note foreign key (note_id)
                                    references tbl_trip_note(id)
 );
+
+--------------------------------------------------
+-- 8. 기초 데이터 (프론트 worldStore 의 TASTE_OPTIONS · KEYWORD_OPTIONS 와 같은 순서)
+--------------------------------------------------
+
+-- 여행 취향
+insert into tbl_preference (preference_name) values
+    ('힐링'), ('풍경'), ('식도락'), ('디저트'), ('물멍'), ('로컬'), ('카페'), ('쇼핑'), ('휴양'), ('캠핑'), ('축제'), ('가성비'),
+    ('어드벤처'), ('팝업'), ('공연'), ('호캉스'), ('자연'), ('사진'), ('기념품'), ('숙소'), ('가족'), ('커플'), ('친구'), ('나홀로');
+
+-- 여행 키워드
+insert into tbl_vibe (vibe_name) values
+    ('평온한'), ('계획적인'), ('평화로운'), ('활발한'), ('여유로운'), ('재밌는'), ('무계획의'), ('회복되는'), ('조용한'),
+    ('나즈막한'), ('체계적인'), ('가벼운'), ('로컬적인'), ('활기찬'), ('체험하는');

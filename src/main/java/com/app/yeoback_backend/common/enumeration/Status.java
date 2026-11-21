@@ -9,7 +9,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public enum Status {
-    ACTIVATE("activate"), SUSPENDED("suspended"), WITHDRAWN("withdrawn");
+    ACTIVE("active"), SUSPENDED("suspended"), WITHDRAWN("withdrawn");
 
     private final String value;
 

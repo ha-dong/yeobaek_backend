@@ -11,18 +11,15 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Component;
-import org.springframework.util.DigestUtils;
 
 import java.security.Key;
 import java.util.Base64;
 import java.util.Date;
-import java.util.concurrent.TimeUnit;
 
 @Component
 @RequiredArgsConstructor
@@ -31,12 +28,16 @@ public class JwtTokenProvider {
     private final UserDetailsService userDetailsService;
     @Value("${jwt.secret}")
     private String secretKey;
+    // 로그인 유지 시간 (초). application.yaml 의 jwt.* 로 바꾼다
+    @Value("${jwt.access-token-validity-seconds:3600}")
+    private long accessTokenValiditySeconds;
+    @Value("${jwt.refresh-token-validity-seconds:1209600}")
+    private long refreshTokenValiditySeconds;
     private Key key;
     private final HttpServletResponse response;
-    private final RedisTemplate<String, Object> redisTemplate;
 
-    private static final String REFRESH_TOKEN_PREFIX = "refresh:";
-    private static final String BLACKLIST_PREFIX = "blacklist:";
+    private static final String ACCESS_TOKEN_COOKIE = "accessToken";
+    private static final String REFRESH_TOKEN_COOKIE = "refreshToken";
 
     @PostConstruct
     protected void init(){
@@ -46,7 +47,7 @@ public class JwtTokenProvider {
 
     //    액세스 토큰 생성
     public String createAccessToken(String username) {
-        final long ACCESS_TOKEN_VALIDITY = 1000L * 60 * 60;
+        final long ACCESS_TOKEN_VALIDITY = accessTokenValiditySeconds * 1000L;
         String accessToken = Jwts.builder()
                 .setSubject(username)
                 .claim("memberEmail", username)
@@ -55,16 +56,13 @@ public class JwtTokenProvider {
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
 
-        Cookie accessTokenCookie = new Cookie("accessToken", accessToken);
-        accessTokenCookie.setPath("/");
-        accessTokenCookie.setMaxAge(60 * 60 * 24 * 1);
-        response.addCookie(accessTokenCookie);
+        addTokenCookie(ACCESS_TOKEN_COOKIE, accessToken, (int) accessTokenValiditySeconds);
 
         return accessToken;
     }
 
     public String createAccessToken(String username, String provider) {
-        final long ACCESS_TOKEN_VALIDITY = 1000L * 60 * 60;
+        final long ACCESS_TOKEN_VALIDITY = accessTokenValiditySeconds * 1000L;
         String accessToken = Jwts.builder()
                 .setSubject(username)
                 .claim("memberEmail", username)
@@ -74,10 +72,7 @@ public class JwtTokenProvider {
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
 
-        Cookie accessTokenCookie = new Cookie("accessToken", accessToken);
-        accessTokenCookie.setPath("/");
-        accessTokenCookie.setMaxAge(60 * 60 * 24 * 1);
-        response.addCookie(accessTokenCookie);
+        addTokenCookie(ACCESS_TOKEN_COOKIE, accessToken, (int) accessTokenValiditySeconds);
 
         return accessToken;
     }
@@ -114,9 +109,9 @@ public class JwtTokenProvider {
                 .getBody().getSubject();
     }
 
-    //    리프레시 토큰 생성
+    //    리프레시 토큰 생성 (서버 저장 없이 쿠키로만 전달)
     public String createRefreshToken(String username){
-        final long REFRESH_TOKEN_VALIDITY = 1000L * 60 * 60 * 24 * 1;
+        final long REFRESH_TOKEN_VALIDITY = refreshTokenValiditySeconds * 1000L;
         String refreshToken = Jwts.builder()
                 .setSubject(username)
                 .setIssuedAt(new Date())
@@ -124,23 +119,13 @@ public class JwtTokenProvider {
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
 
-        redisTemplate.opsForValue().set(
-                REFRESH_TOKEN_PREFIX + username,
-                refreshToken,
-                REFRESH_TOKEN_VALIDITY,
-                TimeUnit.MILLISECONDS
-        );
-
-        Cookie refreshTokenCookie = new Cookie("refreshToken", refreshToken);
-        refreshTokenCookie.setPath("/");
-        refreshTokenCookie.setMaxAge(60 * 60 * 24 * 1);
-        response.addCookie(refreshTokenCookie);
+        addTokenCookie(REFRESH_TOKEN_COOKIE, refreshToken, (int) refreshTokenValiditySeconds);
 
         return refreshToken;
     }
 
     public String createRefreshToken(String username, String provider){
-        final long REFRESH_TOKEN_VALIDITY = 1000L * 60 * 60 * 24 * 1;
+        final long REFRESH_TOKEN_VALIDITY = refreshTokenValiditySeconds * 1000L;
         String refreshToken = Jwts.builder()
                 .setSubject(username)
                 .claim("provider", provider)
@@ -149,30 +134,9 @@ public class JwtTokenProvider {
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
 
-        redisTemplate.opsForValue().set(
-                REFRESH_TOKEN_PREFIX + provider + "_" + username,
-                refreshToken,
-                REFRESH_TOKEN_VALIDITY,
-                TimeUnit.MILLISECONDS
-        );
-
-        Cookie refreshTokenCookie = new Cookie("refreshToken", refreshToken);
-        refreshTokenCookie.setPath("/");
-        refreshTokenCookie.setMaxAge(60 * 60 * 24 * 1);
-        response.addCookie(refreshTokenCookie);
+        addTokenCookie(REFRESH_TOKEN_COOKIE, refreshToken, (int) refreshTokenValiditySeconds);
 
         return refreshToken;
-    }
-
-    //    쿠키와 Redis에서 각 RefreshToken을 가져와서 비교
-    public boolean checkRefreshTokenBetweenCookieAndRedis(String username, String cookieRefreshToken){
-        String redisRefreshToken = getRefreshTokenFromRedis(username);
-        return redisRefreshToken.equals(cookieRefreshToken);
-    }
-
-    //    Redis에서 RefreshToken 조회
-    public String getRefreshTokenFromRedis(String username){
-        return (String) redisTemplate.opsForValue().get(REFRESH_TOKEN_PREFIX + username);
     }
 
     //    클라이언트 요청에서 액세스 토큰 추출
@@ -182,53 +146,12 @@ public class JwtTokenProvider {
             return bearerToken.substring(7);
         }
 
-        if(request.getCookies() != null){
-            for(Cookie cookie : request.getCookies()){
-                if("accessToken".equals(cookie.getName())){
-                    return cookie.getValue();
-                }
-            }
-        }
-
-        return null;
+        return getCookieValue(request, ACCESS_TOKEN_COOKIE);
     }
 
-    //    로그아웃 블랙 리스트 추가
-    public void addToBlacklist(String token) {
-        try {
-            String blacklistToken = getBlacklistTokenKey(token);
-            Claims claims = getClaims(token);
-            long gap = claims.getExpiration().getTime() - System.currentTimeMillis();
-            if (gap > 0) {
-                String blacklistKey = BLACKLIST_PREFIX + blacklistToken;
-                redisTemplate.opsForValue().set(
-                        blacklistKey,
-                        "blacklisted",
-                        gap,
-                        TimeUnit.MILLISECONDS
-                );
-            }
-        } catch (Exception e){
-            throw new RuntimeException("토큰을 블랙리스트에 추가하는데에 실패했습니다.");
-        }
-    }
-
-    //    블랙리스트 조회
-    public boolean isTokenInBlacklist(String token) {
-        try {
-            String blacklistToken = getBlacklistTokenKey(token);
-            String blacklistKey = BLACKLIST_PREFIX + blacklistToken;
-            Boolean hasKey = redisTemplate.hasKey(blacklistKey);
-            return hasKey;
-        } catch (Exception e){
-            log.info("블랙리스트 확인 중 오류 발생: {}", e.getMessage());
-            return true;
-        }
-    }
-
-    public String getBlacklistTokenKey(String token){
-//        긴 토큰 문자열을 짧고 고유한 키로 관리 가능(메모리 효율)
-        return DigestUtils.md5DigestAsHex(token.getBytes());
+    //    클라이언트 요청에서 리프레시 토큰 추출
+    public String parseRefreshTokenFromCookie(HttpServletRequest request){
+        return getCookieValue(request, REFRESH_TOKEN_COOKIE);
     }
 
     public Claims getClaims(String token) {
@@ -238,8 +161,30 @@ public class JwtTokenProvider {
                 .parseClaimsJws(token).getBody();
     }
 
-    //    리프레시 토큰 삭제
-    public void deleteRefreshToken(String username) {
-        log.info("refresh token deleted: {}", redisTemplate.delete(REFRESH_TOKEN_PREFIX + username));
+    //    로그아웃: 액세스/리프레시 토큰 쿠키 삭제
+    public void deleteTokenCookies() {
+        addTokenCookie(ACCESS_TOKEN_COOKIE, null, 0);
+        addTokenCookie(REFRESH_TOKEN_COOKIE, null, 0);
+        log.info("token cookies deleted");
+    }
+
+    private void addTokenCookie(String name, String value, int maxAge) {
+        Cookie cookie = new Cookie(name, value);
+        // 프론트는 localStorage 의 토큰을 쓰므로 쿠키는 JS 에서 읽을 필요가 없다 (XSS 로 탈취 방지)
+        cookie.setHttpOnly(true);
+        cookie.setPath("/");
+        cookie.setMaxAge(maxAge);
+        response.addCookie(cookie);
+    }
+
+    private String getCookieValue(HttpServletRequest request, String name) {
+        if(request.getCookies() != null){
+            for(Cookie cookie : request.getCookies()){
+                if(name.equals(cookie.getName())){
+                    return cookie.getValue();
+                }
+            }
+        }
+        return null;
     }
 }

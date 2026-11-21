@@ -38,10 +38,10 @@ public class LogAspect {
         log.info("◀ [{}#{}] Return: {}", className, methodName, returnValue);
     }
 
-    @Pointcut("@annotation(com.app.globalgates.aop.annotation.LogStatus)")
+    @Pointcut("@annotation(com.app.yeoback_backend.aop.annotation.LogStatus)")
     public void logStatusAnnotated(){}
 
-    @Pointcut("@annotation(com.app.globalgates.aop.annotation.LogStatusWithReturn)")
+    @Pointcut("@annotation(com.app.yeoback_backend.aop.annotation.LogStatusWithReturn)")
     public void logStatusWithReturnAnnotated(){}
 }
 

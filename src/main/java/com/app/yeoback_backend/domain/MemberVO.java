@@ -21,4 +21,5 @@ public class MemberVO extends Period {
     private String memberAlias;
     private String memberBio;
     private Status memberStatus;
+    private boolean memberLoginVerified;
 }

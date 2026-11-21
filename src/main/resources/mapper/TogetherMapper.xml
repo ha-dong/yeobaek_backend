@@ -1,43 +1,99 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.app.yeoback_backend.mapper.MemberMapper">
+<mapper namespace="com.app.yeoback_backend.mapper.TogetherMapper"> <!-- [수정] MemberMapper → TogetherMapper (회원 XML과 이름이 같으면 서버가 안 켜짐) -->
 
+    <!-- 모임 만들기 -->
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         insert into tbl_get_together(place_id,
-                                     together_title,
-                                     together_content,
-                                     together_max_member,
-                                     together_start_date,
-                                     together_end_date)
-        values (#{placeId}, #{togetherTitle}, #{togetherContent}, #{togetherMaxMember}, #{togetherStartDate}, #{togetherEndDate})
+        together_title,
+        together_content,
+        together_purpose, <!--식당/관광지 -->
+        together_area, <!--까운 곳/먼 곳 -->
+        together_max_member,
+        together_start_date,
+        together_end_date)
+        values (#{placeId}, #{togetherTitle}, #{togetherContent},
+        #{togetherPurpose}::together_purpose, #{togetherArea}::together_area,
+        #{togetherMaxMember},
+        now(), <!--시작 시간 = 만든 순간 -->
+        now() + interval '2 hours') <!--끝 시간은 일단 2시간 뒤로 (실제로 끝나면 그때 시간으로 다시 적음) -->
     </insert>
 
-    <select id="selectById">
+    <!-- 모임 한 개 보기 -->
+    <select id="selectById" resultType="com.app.yeoback_backend.dto.TogetherDTO">
         select id,
-               place_id, together_title,
-               together_content, together_purpose,
-               together_area, together_max_member,
-               together_start_date, together_end_date,
-               together_status, created_datetime,
-               updated_datetime
+        place_id, together_title,
+        together_content, together_purpose,
+        together_area, together_max_member,
+        together_start_date, together_end_date,
+        together_status, created_datetime,
+        updated_datetime
         from tbl_get_together
         where id = #{id}
     </select>
+
+    <!-- [추가] 모임 목록 (규칙 5: 상태가 같이 나가서 밖에서도 모집 중/마감/완료가 보임) -->
+    <select id="selectAll" resultType="com.app.yeoback_backend.dto.TogetherDTO">
+        select id,
+        place_id, together_title,
+        together_content, together_purpose,
+        together_area, together_max_member,
+        together_start_date, together_end_date,
+        together_status, created_datetime,
+        updated_datetime
+        from tbl_get_together
+        order by id desc <!-- 최근에 만든 모임부터 -->
+    </select>
+
+    <!-- [추가] 규칙 1: 이 모임의 모임장 회원 번호 -->
+    <select id="selectHostId" resultType="long">
+        select member_id
+        from tbl_together_member
+        where together_id = #{id}
+          and together_role = 'HOST'
+    </select>
+
+    <!-- [추가] 규칙 4: 지금 들어와 있는 사람 수 (모임장 포함) -->
+    <select id="selectMemberCount" resultType="int">
+        select count(*)
+        from tbl_together_member
+        where together_id = #{id}
+    </select>
+
+    <!-- 모임 고치기 (모임장인지는 서비스에서 먼저 확인) -->
+    <!-- [삭제] together_status: 상태는 아래 updateStatus 에서 따로 바꿈 -->
+    <!-- [삭제] together_start_date, together_end_date: 시간은 규칙 6·8 대로 서버가 정함 -->
     <update id="update">
-            update tbl_get_together
-            set together_title = #{togetherTitle},
-                together_content = #{togetherContent},
-                together_max_member = #{togetherMaxMember},
-                together_area = #{togetherArea},
-                together_status = #{togetherStatus},
-                together_purpose = #{togetherPurpose},
-                together_start_date = #{togetherStartDate},
-                together_end_date = #{togetherEndDate}
-            where id = #{id}
+        update tbl_get_together
+        set together_title = #{togetherTitle},
+        together_content = #{togetherContent},
+        together_max_member = #{togetherMaxMember},
+        together_area = #{togetherArea}::together_area, <!-- [수정] ::together_area 추가 -->
+        together_purpose = #{togetherPurpose}::together_purpose, <!-- [수정] ::together_purpose 추가 -->
+        updated_datetime = now() <!-- [추가] 고친 시간 -->
+        where id = #{id}
     </update>
 
-    <delete id="delete">
-        delete from tbl_get_together
+    <!-- [추가] 규칙 5: 모집 중(OPEN) / 마감(CLOSE) / 완료(ENDED) 로 바꾸기 -->
+    <update id="updateStatus">
+        update tbl_get_together
+        set together_status = #{togetherStatus}::together_status
         where id = #{id}
-    </delete>
+    </update>
+
+    <!-- [추가] 규칙 8: 시작한 지 2시간이 지났고, 최근 2시간 동안 메시지가 하나도 없는 모임을 완료로 (= 수첩에 저장) -->
+    <update id="updateStatusToEnded">
+        update tbl_get_together
+        set together_status = 'ENDED',
+        together_end_date = now()
+        where together_status in ('OPEN', 'CLOSE') <!-- 아직 안 끝난 모임만 -->
+        and now() - interval '2 hours' > together_start_date <!-- 시작한 지 2시간이 지난 모임만 -->
+        and id not in (select together_id <!-- 아래 채팅방들의 모임 번호에 없는 모임 -->
+        from tbl_chat
+        where id in (select chat_id <!-- 최근 2시간 안에 메시지가 있는 채팅방 -->
+        from tbl_chat_message
+        where created_datetime > now() - interval '2 hours'))
+    </update>
+
+    <!-- [삭제] delete: 모임을 만들면 모임장·채팅방이 이 모임을 가리키고 있어서 지우면 항상 외래 키 오류가 남. 끝낼 때는 '완료'(updateStatus) 사용 -->
 </mapper>

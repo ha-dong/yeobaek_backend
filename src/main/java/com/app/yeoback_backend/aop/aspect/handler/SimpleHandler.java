@@ -1,7 +1,7 @@
 package com.app.yeoback_backend.aop.aspect.handler;
 
 
-import com.app.globalgates.aop.aspect.util.MethodMatcher;
+import com.app.yeoback_backend.aop.aspect.util.MethodMatcher;
 import lombok.RequiredArgsConstructor;
 
 import java.lang.reflect.InvocationHandler;

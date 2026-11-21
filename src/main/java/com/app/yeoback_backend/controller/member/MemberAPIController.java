@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -17,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/member/**")
+@RequestMapping("/api/member")
 @RequiredArgsConstructor
 @Slf4j
 public class MemberAPIController {
@@ -27,9 +28,9 @@ public class MemberAPIController {
     private final HttpServletResponse response;
 
     // 회원가입
-    @PostMapping("join")
+    @PostMapping("/join")
     @LogStatus
-    public ResponseEntity<?> join(MemberDTO memberDTO) {
+    public ResponseEntity<?> join(@RequestBody MemberDTO memberDTO) {
         log.info("memberDTO {}", memberDTO);
         memberService.join(memberDTO);
 

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.app.yeoback_backend.mapper.TogetherMemberMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        insert into tbl_together_member(together_id,
+        member_id,
+        together_role)
+        values (#{togetherId}, #{memberId}, #{togetherRole}::together_role)
+    </insert>
+
+    <select id="selectById" resultType="com.app.yeoback_backend.dto.TogetherMemberDTO">
+        select id,
+        together_id,
+        member_id,
+        together_role,
+        together_guest_member,
+        created_datetime
+        from tbl_together_member
+        where id = #{id}
+    </select>
+    <!--이 회원이 이 모임에 이미 들어와 있는지 -->
+    <select id="selectByTogetherIdAndMemberId" resultType="com.app.yeoback_backend.dto.TogetherMemberDTO">
+        select id, together_id, member_id, together_role, together_guest_member, created_datetime
+        from tbl_together_member
+        where together_id = #{togetherId}
+          and member_id = #{memberId}
+    </select>
+    <!--참여자 목록 (닉네임 포함, 들어온 순서) -->
+    <!--  회원 닉네임만 가져오고 본명은 안 가져옴 -->
+    <select id="selectAllByTogetherId" resultType="com.app.yeoback_backend.dto.TogetherMemberDTO">
+        select tm.id, tm.together_id, tm.member_id, tm.together_role,
+        tm.together_guest_member, tm.created_datetime,
+        coalesce(m.member_alias, '여행자') as member_alias
+        from tbl_together_member tm
+        join tbl_member m on m.id = tm.member_id
+        where tm.together_id = #{togetherId}
+        order by tm.id
+    </select>
+    <!--지금 인원 = 참여자 수 + 데려오는 동행 수 -->
+    <select id="selectHeadcount" resultType="int">
+        select coalesce(sum(1 + coalesce(together_guest_member, 0)), 0)
+        from tbl_together_member
+        where together_id = #{togetherId}
+    </select>
+
+    <delete id="delete">
+        delete from tbl_together_member
+        where together_id = #{togetherId}
+          and member_id = #{memberId}
+    </delete>
+</mapper>

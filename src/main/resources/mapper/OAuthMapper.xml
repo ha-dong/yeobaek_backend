@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.app.yeoback_backend.mapper.OAuthMapper">
+    <insert id="insert">
+        insert into tbl_oauth (provider_id, provider, profile_url, member_id)
+        values (#{providerId}, #{provider}, #{profileURL}, #{memberId})
+    </insert>
+
+    <!-- 해당 공급자로 연동된 활동 중인 회원 조회 -->
+    <select id="selectMemberByLoginId" resultType="MemberDTO">
+        select m.id, m.member_email, m.member_phone,
+               m.member_password, m.member_name,
+               m.member_alias, m.member_bio,
+               m.member_status, m.member_login_verified,
+               a.member_role,
+               m.created_datetime, m.updated_datetime
+        from tbl_member m
+                 join tbl_oauth o on m.id = o.member_id
+                 left join tbl_auth a on a.id = m.id
+        where (m.member_email = #{loginId} or m.member_phone = #{loginId})
+          and m.member_status = 'ACTIVE'
+          and o.provider = #{provider}
+    </select>
+
+    <!-- 공급자 + 공급자 고유 id 로 연동된 회원 조회 (상태 무관: 정지·탈퇴 여부는 서비스에서 판단) -->
+    <select id="selectMemberByProviderId" resultType="MemberDTO">
+        select m.id, m.member_email, m.member_phone,
+               m.member_password, m.member_name,
+               m.member_alias, m.member_bio,
+               m.member_status, m.member_login_verified,
+               a.member_role,
+               m.created_datetime, m.updated_datetime
+        from tbl_member m
+                 join tbl_oauth o on m.id = o.member_id
+                 left join tbl_auth a on a.id = m.id
+        where o.provider = #{provider}
+          and o.provider_id = #{providerId}
+    </select>
+</mapper>

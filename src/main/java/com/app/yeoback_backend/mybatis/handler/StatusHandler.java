@@ -17,7 +17,7 @@ public class StatusHandler implements TypeHandler<Status> {
     @Override
     public Status getResult(ResultSet rs, int columnIndex) throws SQLException {
         return switch (rs.getString(columnIndex)) {
-            case "activate" -> Status.ACTIVATE;
+            case "active" -> Status.ACTIVE;
             case "suspended" -> Status.SUSPENDED;
             case "withdrawn" -> Status.WITHDRAWN;
             default -> null;
@@ -27,7 +27,7 @@ public class StatusHandler implements TypeHandler<Status> {
     @Override
     public Status getResult(ResultSet rs, String columnName) throws SQLException {
         return switch (rs.getString(columnName)) {
-            case "activate" -> Status.ACTIVATE;
+            case "active" -> Status.ACTIVE;
             case "suspended" -> Status.SUSPENDED;
             case "withdrawn" -> Status.WITHDRAWN;
             default -> null;
@@ -37,7 +37,7 @@ public class StatusHandler implements TypeHandler<Status> {
     @Override
     public Status getResult(CallableStatement cs, int columnIndex) throws SQLException {
         return switch (cs.getString(columnIndex)) {
-            case "activate" -> Status.ACTIVATE;
+            case "active" -> Status.ACTIVE;
             case "suspended" -> Status.SUSPENDED;
             case "withdrawn" -> Status.WITHDRAWN;
             default -> null;

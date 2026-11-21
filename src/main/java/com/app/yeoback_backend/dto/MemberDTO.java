@@ -1,5 +1,6 @@
 package com.app.yeoback_backend.dto;
 
+import com.app.yeoback_backend.common.enumeration.MemberRole;
 import com.app.yeoback_backend.common.enumeration.Status;
 import com.app.yeoback_backend.domain.MemberVO;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -25,10 +26,17 @@ public class MemberDTO implements Serializable {
     private String memberAlias;
     private String memberBio;
     private Status memberStatus;
+    private boolean memberLoginVerified;
+
+    //
+    private MemberRole memberRole;
 
     // 프로필사진
 
+    // 유저가 설정한 설정값
 
+
+    // toVO
     public MemberVO toMemberVO() {
         return MemberVO.builder()
                 .id(id)

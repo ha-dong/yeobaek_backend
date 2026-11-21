@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.app.yeoback_backend.mapper.MemberSettingMapper">
+
+    <!-- 가입 직후: 기본값(create.sql default)으로 설정 행 생성 -->
+    <insert id="insertDefault">
+        insert into tbl_member_setting (id)
+        values (#{memberId})
+        on conflict (id) do nothing
+    </insert>
+
+    <select id="selectByMemberId" resultType="MemberSettingDTO">
+        select id, thema_color, alias_public, phone_public, note_auto_save
+        from tbl_member_setting
+        where id = #{memberId}
+    </select>
+
+    <update id="update">
+        update tbl_member_setting
+        <set>
+            <if test="themaColor != null">thema_color = #{themaColor},</if>
+            <if test="aliasPublic != null">alias_public = #{aliasPublic},</if>
+            <if test="phonePublic != null">phone_public = #{phonePublic},</if>
+            <if test="noteAutoSave != null">note_auto_save = #{noteAutoSave},</if>
+            updated_datetime = now()
+        </set>
+        where id = #{id}
+    </update>
+
+    <!-- 여행 취향 -->
+    <select id="selectPreferenceNames" resultType="string">
+        select p.preference_name
+        from tbl_member_preference mp
+                 join tbl_preference p on p.id = mp.preference_id
+        where mp.member_id = #{memberId}
+        order by p.id
+    </select>
+
+    <select id="selectPreferenceIdsByNames" resultType="long">
+        select id from tbl_preference
+        where preference_name in
+        <foreach collection="names" item="name" open="(" separator="," close=")">#{name}</foreach>
+    </select>
+
+    <delete id="deletePreferences">
+        delete from tbl_member_preference where member_id = #{memberId}
+    </delete>
+
+    <insert id="insertPreferences">
+        insert into tbl_member_preference (member_id, preference_id) values
+        <foreach collection="ids" item="id" separator=",">(#{memberId}, #{id})</foreach>
+    </insert>
+
+    <!-- 여행 키워드 -->
+    <select id="selectVibeNames" resultType="string">
+        select v.vibe_name
+        from tbl_member_vibe mv
+                 join tbl_vibe v on v.id = mv.vibe_id
+        where mv.member_id = #{memberId}
+        order by v.id
+    </select>
+
+    <select id="selectVibeIdsByNames" resultType="long">
+        select id from tbl_vibe
+        where vibe_name in
+        <foreach collection="names" item="name" open="(" separator="," close=")">#{name}</foreach>
+    </select>
+
+    <delete id="deleteVibes">
+        delete from tbl_member_vibe where member_id = #{memberId}
+    </delete>
+
+    <insert id="insertVibes">
+        insert into tbl_member_vibe (member_id, vibe_id) values
+        <foreach collection="ids" item="id" separator=",">(#{memberId}, #{id})</foreach>
+    </insert>
+</mapper>
